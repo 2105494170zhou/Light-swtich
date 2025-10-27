@@ -12,8 +12,6 @@ It’s simple but really fun — I learned how to make hardware react instantly 
 
 ## Hardware
 
-| Component | Description |
-|------------|-------------|
 | **Microcontroller** | Arduino Nano (or Pro Mini) |
 | **Servo Motor** | MG995 micro servo |
 | **IR Receiver** | HX1838 (reads remote signal) |
