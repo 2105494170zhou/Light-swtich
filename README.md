@@ -12,12 +12,12 @@ It’s simple but really fun — I learned how to make hardware react instantly 
 
 ## Hardware
 
-**Microcontroller:** Arduino Nano (or Pro Mini)
-**Servo Motor:** MG995 micro servo
-**IR Receiver:** HX1838 (reads remote signal)
-**Button:** AE1027 Push button connected to interrupt pin
-**Power:** 4 x AA battery
-**Mount:** 3D-printed holder that presses the switch
+**Microcontroller:** Arduino Nano (or Pro Mini)  |
+**Servo Motor:** MG995 micro servo |
+**IR Receiver:** HX1838 (reads remote signal) |
+**Button:** AE1027 Push button connected to interrupt pin |
+**Power:** 4 x AA battery |
+**Mount:** 3D-printed holder that presses the switch |
 
 ## How It Works
 
