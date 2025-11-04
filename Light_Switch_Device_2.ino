@@ -2,107 +2,129 @@
 #include <avr/sleep.h>
 #include <avr/interrupt.h>
 
-#define SERVO_PIN 9
-#define IR_PIN 2
-#define BUTTON_PIN 3
+#define PIN_SRV 9
+#define PIN_IR 2
+#define PIN_BTN 3
 
-#define POS_A 1000
-#define POS_B 1900
-#define MOVE_TIME_MS 500
+#define P_A 1000
+#define P_B 1900
+#define MOVE_MS 500
 
-#define REFRACT_IR 150
-#define REFRACT_BTN 150
-#define IDLE_STABLE_MS 150
-#define IDLE_TIMEOUT_MS 2000
+#define REF_IR 150
+#define REF_BTN 150
+#define IDLE_MS 150
+#define TIMEOUT_MS 2000
 
-Servo servo1;
+Servo srv;
 
-volatile bool wake = false;
-volatile uint8_t why = 0;
-bool posState = false;
-unsigned long lastAction = 0;
+volatile bool woke = false;
+volatile int why = 0;
+int currPulse = P_A;
+float lastMs = 0;
 
-void irISR() { why = 1; wake = true; }
-void btnISR() { why = 2; wake = true; }
+void onIR() {
+  why = 1;
+  woke = true;
+  detachInterrupt(digitalPinToInterrupt(PIN_IR));
+  detachInterrupt(digitalPinToInterrupt(PIN_BTN));
+}
 
-void waitIdle(unsigned int stableMs = IDLE_STABLE_MS, unsigned int timeoutMs = IDLE_TIMEOUT_MS) {
-  unsigned long t0 = millis();
-  while (millis() - t0 < timeoutMs) {
-    if (digitalRead(IR_PIN) == HIGH && digitalRead(BUTTON_PIN) == HIGH) {
-      delay(stableMs);
-      if (digitalRead(IR_PIN) == HIGH && digitalRead(BUTTON_PIN) == HIGH) return;
+void onBTN() {
+  why = 2;
+  woke = true;
+  detachInterrupt(digitalPinToInterrupt(PIN_IR));
+  detachInterrupt(digitalPinToInterrupt(PIN_BTN));
+}
+
+void waitIdle(int stable = IDLE_MS, int limit = TIMEOUT_MS) {
+  float t0 = (float)millis();
+  while (((float)millis() - t0) < (float)limit) {
+    if (digitalRead(PIN_IR) == HIGH && digitalRead(PIN_BTN) == HIGH) {
+      delay(stable);
+      if (digitalRead(PIN_IR) == HIGH && digitalRead(PIN_BTN) == HIGH) return;
     }
     delay(5);
   }
 }
 
 void sleepNow() {
-  wake = false;
+  set_sleep_mode(SLEEP_MODE_PWR_DOWN);
   EIFR = _BV(INTF0) | _BV(INTF1);
+
   noInterrupts();
-  attachInterrupt(digitalPinToInterrupt(IR_PIN), irISR, LOW);
-  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), btnISR, LOW);
+  attachInterrupt(digitalPinToInterrupt(PIN_IR), onIR, LOW);
+  attachInterrupt(digitalPinToInterrupt(PIN_BTN), onBTN, LOW);
   sleep_enable();
   interrupts();
 
-  if (digitalRead(IR_PIN) == LOW || digitalRead(BUTTON_PIN) == LOW) {
+  if (digitalRead(PIN_IR) == LOW || digitalRead(PIN_BTN) == LOW) {
     sleep_disable();
     noInterrupts();
-    detachInterrupt(digitalPinToInterrupt(IR_PIN));
-    detachInterrupt(digitalPinToInterrupt(BUTTON_PIN));
+    detachInterrupt(digitalPinToInterrupt(PIN_IR));
+    detachInterrupt(digitalPinToInterrupt(PIN_BTN));
     interrupts();
-    why = (digitalRead(IR_PIN) == LOW) ? 1 : 2;
-    wake = true;
+    why = (digitalRead(PIN_IR) == LOW) ? 1 : 2;
+    woke = true;
     return;
+  }
+
+  float t0 = (float)millis();
+  while (((float)millis() - t0) < 80.0f) {
+    if (digitalRead(PIN_IR) == LOW || digitalRead(PIN_BTN) == LOW) {
+      sleep_disable();
+      noInterrupts();
+      detachInterrupt(digitalPinToInterrupt(PIN_IR));
+      detachInterrupt(digitalPinToInterrupt(PIN_BTN));
+      interrupts();
+      why = (digitalRead(PIN_IR) == LOW) ? 1 : 2;
+      woke = true;
+      return;
+    }
+    delay(1);
   }
 
   sleep_cpu();
   sleep_disable();
-  noInterrupts();
-  detachInterrupt(digitalPinToInterrupt(IR_PIN));
-  detachInterrupt(digitalPinToInterrupt(BUTTON_PIN));
-  interrupts();
-
-  if (!wake) {
-    why = (digitalRead(IR_PIN) == LOW) ? 1 : 2;
-    wake = true;
-  }
 }
 
 void setup() {
-  pinMode(IR_PIN, INPUT_PULLUP);
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
-  servo1.detach();
+  pinMode(PIN_IR, INPUT_PULLUP);
+  pinMode(PIN_BTN, INPUT_PULLUP);
+  srv.detach();
   delay(300);
   waitIdle();
 }
 
 void loop() {
   sleepNow();
-  if (!wake) return;
+  if (!woke) return;
 
   noInterrupts();
-  uint8_t c = why;
+  int cause = why;
   why = 0;
-  wake = false;
+  woke = false;
   interrupts();
 
-  unsigned long now = millis();
-  unsigned int ref = (c == 1) ? REFRACT_IR : REFRACT_BTN;
-  if (lastAction != 0 && now - lastAction < ref) {
+  float now = (float)millis();
+  int refms = (cause == 1) ? REF_IR : REF_BTN;
+  if (lastMs > 0 && (now - lastMs) < (float)refms) {
     waitIdle();
     return;
   }
 
-  if (c == 1) delay(120); else delay(40);
+  if (cause == 1) delay(120); else delay(40);
 
-  servo1.attach(SERVO_PIN);
-  servo1.writeMicroseconds(posState ? POS_A : POS_B);
-  delay(MOVE_TIME_MS);
-  servo1.detach();
+  srv.attach(PIN_SRV);
+  if (currPulse == P_A) {
+    srv.writeMicroseconds(P_B);
+    currPulse = P_B;
+  } else {
+    srv.writeMicroseconds(P_A);
+    currPulse = P_A;
+  }
+  delay(MOVE_MS);
+  srv.detach();
 
-  posState = !posState;
-  lastAction = millis();
-
+  lastMs = (float)millis();
   waitIdle();
 }
